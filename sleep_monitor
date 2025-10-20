@@ -8,13 +8,10 @@
 SERVICE_STATE="${1}"
 LID_STATE_FILE="/proc/acpi/button/lid/LID0/state"
 IDLE_THRESHOLD_MS=600000  # 10 minutes
-CHECK_INTERVAL=5         # seconds
+CHECK_INTERVAL=5          # seconds
 SLEEP_DURATION=300        # seconds before shutdown (5 min)
 
-
-
-
-
+last_active_time=$(date +%s)
 
 detect_sleep_mode() {
     local supported_modes
@@ -31,6 +28,25 @@ detect_sleep_mode() {
     fi
 }
 
+check_idle_evtest() {
+    for dev in /dev/input/event*; do
+        if evtest --query "${dev}" EV_KEY KEY_RESERVED 2>/dev/null | grep -q "value 1"; then
+            last_active_time=$(date +%s)
+            break
+        fi
+    done
+
+    current_time=$(date +%s)
+    idle_seconds=$((current_time - last_active_time))
+
+    if [ "${idle_seconds}" -ge $((IDLE_THRESHOLD_MS / 1000)) ]; then
+        echo "Idle time exceeded threshold (${idle_seconds}s)"
+        return 0
+    else
+        return 1
+    fi
+}
+
 monitor_loop() {
     local last_uptime=0
     local current_uptime=0
@@ -41,7 +57,6 @@ monitor_loop() {
         # Detect wake from sleep by checking if uptime jumped
         if [ "$((current_uptime - last_uptime))" -gt "${CHECK_INTERVAL}" ]; then
             echo "System resumed from sleep"
-            # Reinitialize anything needed here
         fi
 
         last_uptime="${current_uptime}"
@@ -53,18 +68,13 @@ monitor_loop() {
         fi
 
         # Idle check
-        if command -v xprintidle >/dev/null 2>&1; then
-            idle_ms=$(xprintidle)
-            if [ "${idle_ms}" -gt "${IDLE_THRESHOLD_MS}" ]; then
-                echo "Idle time exceeded threshold"
-                handle_sleep_and_shutdown
-            fi
+        if check_idle_evtest; then
+            handle_sleep_and_shutdown
         fi
 
         sleep "${CHECK_INTERVAL}"
     done
 }
-
 
 handle_sleep_and_shutdown() {
     echo "Preparing for sleep..."
@@ -90,7 +100,7 @@ handle_sleep_and_shutdown() {
     if grep -q 'closed' "${LID_STATE_FILE}"; then
         echo "Lid still closed, proceeding to shutdown"
         poweroff
-    elif command -v xprintidle >/dev/null 2>&1 && [ "$(xprintidle)" -gt "${IDLE_THRESHOLD_MS}" ]; then
+    elif check_idle_evtest; then
         echo "Still idle, proceeding to shutdown"
         poweroff
     else
@@ -105,12 +115,11 @@ case "${SERVICE_STATE}" in
         ;;
     stop)
         echo "Stopping sleep-monitor service..."
-        pkill -f sleep-monitor.sh
+        pkill -f sleep_monitor
         ;;
     *)
         echo "Usage: $0 start|stop"
         exit 1
         ;;
 esac
-
 
