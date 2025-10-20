@@ -7,95 +7,16 @@
 
 SERVICE_STATE="${1}"
 LID_STATE_FILE="/proc/acpi/button/lid/LID0/state"
-IDLE_THRESHOLD_MS=600000  # 10 minutes
-CHECK_INTERVAL=5         # seconds
-SLEEP_DURATION=300        # seconds before shutdown (5 min)
-
-
-
-
-
-
-detect_sleep_mode() {
-    local supported_modes
-    supported_modes=$(cat /sys/power/state)
-
-    if echo "${supported_modes}" | grep -qw "mem"; then
-        echo "mem"
-    elif echo "${supported_modes}" | grep -qw "standby"; then
-        echo "standby"
-    elif echo "${supported_modes}" | grep -qw "freeze"; then
-        echo "freeze"
-    else
-        echo "none"
-    fi
-}
+CHECK_INTERVAL=5  # seconds
 
 monitor_loop() {
-    local last_uptime=0
-    local current_uptime=0
-
     while true; do
-        current_uptime=$(cut -d. -f1 < /proc/uptime)
-
-        # Detect wake from sleep by checking if uptime jumped
-        if [ "$((current_uptime - last_uptime))" -gt "${CHECK_INTERVAL}" ]; then
-            echo "System resumed from sleep"
-            # Reinitialize anything needed here
-        fi
-
-        last_uptime="${current_uptime}"
-
-        # Lid check
         if grep -q 'closed' "${LID_STATE_FILE}"; then
-            echo "Lid closed detected"
-            handle_sleep_and_shutdown
+            echo "Lid closed detected — shutting down"
+            poweroff
         fi
-
-        # Idle check
-        if command -v xprintidle >/dev/null 2>&1; then
-            idle_ms=$(xprintidle)
-            if [ "${idle_ms}" -gt "${IDLE_THRESHOLD_MS}" ]; then
-                echo "Idle time exceeded threshold"
-                handle_sleep_and_shutdown
-            fi
-        fi
-
         sleep "${CHECK_INTERVAL}"
     done
-}
-
-
-handle_sleep_and_shutdown() {
-    echo "Preparing for sleep..."
-
-    # Shutdown controllers (example: uhubctl)
-    if command -v uhubctl >/dev/null 2>&1; then
-        uhubctl -a off
-        echo "Controllers powered off"
-    fi
-
-    sleep_mode=$(detect_sleep_mode)
-    echo "Detected sleep mode: ${sleep_mode}"
-
-    if [ "${sleep_mode}" != "none" ] && command -v rtcwake >/dev/null 2>&1; then
-        rtcwake -m "${sleep_mode}" -s "${SLEEP_DURATION}"
-        echo "System resumed from rtcwake sleep"
-    else
-        echo "Sleep not supported, delaying shutdown"
-        sleep "${SLEEP_DURATION}"
-    fi
-
-    # Re-check lid state or idle time before shutdown
-    if grep -q 'closed' "${LID_STATE_FILE}"; then
-        echo "Lid still closed, proceeding to shutdown"
-        poweroff
-    elif command -v xprintidle >/dev/null 2>&1 && [ "$(xprintidle)" -gt "${IDLE_THRESHOLD_MS}" ]; then
-        echo "Still idle, proceeding to shutdown"
-        poweroff
-    else
-        echo "User activity detected, aborting shutdown"
-    fi
 }
 
 case "${SERVICE_STATE}" in
@@ -105,11 +26,10 @@ case "${SERVICE_STATE}" in
         ;;
     stop)
         echo "Stopping sleep-monitor service..."
-        pkill -f sleep-monitor.sh
+        pkill -f sleep_monitor
         ;;
     *)
         echo "Usage: $0 start|stop"
         exit 1
         ;;
 esac
-
