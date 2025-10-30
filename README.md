@@ -1,13 +1,13 @@
 # batocera_utils
 some helpful things for batocera
 
-sleep_monitor is a service file to detect lid close on laptop
+**sleep_monitor** is a service file to detect lid close on laptop
 
-lid-switch.sh for lid close triggered by multimedia_keys.conf
+**lid-switch.sh** for lid close triggered by **multimedia_keys.conf**. however, i'm not using this as the lid switch can be triggered for other reasons so i'm using the **sleep_monitor**
 
-osd-controls.sh fixes brightness controls. the osd doesn't function as intended. the volume control functions are not needed, just there as i wanted a global osd, but that doesn't work
+**osd-controls.sh** fixes brightness controls. the osd doesn't function as intended. the volume control functions are not needed, just there as i wanted a global osd, but that doesn't work
 
-multimedia_keys.conf is to trigger the brightness keys and lid switch and whatever else. volume not configured since osd doesn't work
+**multimedia_keys.conf** is to trigger the brightness keys and lid switch and whatever else. volume not configured since osd doesn't work
 
 
 # Motion Controls scripts https://github.com/git-developer/batocera-extra     
